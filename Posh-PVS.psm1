@@ -202,7 +202,7 @@ function Remove-PVSSession
         Position=0,
         ParameterSetName = "Session",
         ValueFromPipeline=$True)]
-        [psobject]$Session
+        [pscustomobject]$Session
     )
     BEGIN 
     {
@@ -341,7 +341,7 @@ function Get-PVSServerFeedInfo
         ParameterSetName = "Session",
         ValueFromPipeline=$true,
         Position=0)]
-        [psobject]$Session
+        [pscustomobject]$Session
     )
     BEGIN 
     {
@@ -427,7 +427,7 @@ function Show-PVSResult
         ParameterSetName = "Session",
         ValueFromPipeline=$true,
         Position=0)]
-        [psobject]$Session
+        [pscustomobject]$Session
     )
     BEGIN 
     {
@@ -531,7 +531,7 @@ function Show-PVSResult
                 SnapshotId = $report.snapshot_id
                 Type       = $report_type
             }
-            [psobject]$reportprops
+            [pscustomobject]$reportprops
 
         }
      
