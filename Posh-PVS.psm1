@@ -281,9 +281,9 @@ function Get-PVSSession
     [CmdletBinding(DefaultParameterSetName = 'Index')]
     param(
 
-        # Nessus session index.
+        # PVS session index.
         [Parameter(Mandatory=$false,
-        Position=0)]
+            Position=0)]
         [Int32[]] $Id
     )
 
@@ -330,22 +330,24 @@ function Get-PVSServerFeedInfo
     [CmdletBinding(DefaultParameterSetName = 'Index')]
     param(
 
-        # Nessus session index
+        # PVS session index
         [Parameter(Mandatory=$true,
-        ParameterSetName = "Index",
-        Position=0)]
+            ParameterSetName = "Index",
+            Position=0)]
         [int32[]]$Id = @(),
 
-        # Nessus session object
+        # PVS session object
         [Parameter(Mandatory=$true,
-        ParameterSetName = "Session",
-        ValueFromPipeline=$true,
-        Position=0)]
+            ParameterSetName = "Session",
+            ValueFromPipeline=$true,
+            Position=0)]
         [pscustomobject]$Session
+
+
     )
     BEGIN 
     {
-        
+        $PVSSessions = New-Object System.Collections.ArrayList   
     }
     PROCESS 
     {    
@@ -355,48 +357,51 @@ function Get-PVSServerFeedInfo
             {
                 if ($conn.id -in $Id)
                 {
-                    $PVSSession = $conn
+                    [void]$PVSSessions.Add($conn)
                 }
             }
         }
         elseif ($Session -ne $null -and $Session.pstypenames[0] -eq "PVS.Session")
         {
-                $PVSSession = $Session
+                [void]$PVSSessions.Add($Session)
         }
         else 
         {
             throw "PVS.Session was provided"
         }
 
-        $Header = @{ 'pvs-session'='false';
-            'token'='';'pvs-tk'= "$($PVSSession.token)";
-            'pvs-name'="$($PVSSession.user.name)" 
-            'pvs-admin'="$($PVSSession.user.admin)"
-        }
+        foreach($PVSSession in $PVSSessions)
+        {
+            $Header = @{ 'pvs-session'='false';
+                'token'='';'pvs-tk'= "$($PVSSession.token)";
+                'pvs-name'="$($PVSSession.user.name)" 
+                'pvs-admin'="$($PVSSession.user.admin)"
+            }
 
-        $Body =  @{'token' = "$($PVS_Session.token)"; 
-            'seq'= (Get-Random -Maximum 1000) 
-            'json'=1
-        } 
+            $Body =  @{'token' = "$($PVS_Session.token)"; 
+                'seq'= (Get-Random -Maximum 1000) 
+                'json'=1
+            } 
         
-        $server_reply = Invoke-WebRequest -Headers $Header -Body $Body -Uri ($PVSSession.Host + "/feed") -Method Post
-        $origin = New-Object -Type DateTime -ArgumentList 1970, 1, 1, 0, 0, 0, 0
-        $info = $server_reply.Content | ConvertFrom-Json
-        $FeedDetails = $info.reply.contents
+            $server_reply = Invoke-WebRequest -Headers $Header -Body $Body -Uri ($PVSSession.Host + "/feed") -Method Post
+            $origin = New-Object -Type DateTime -ArgumentList 1970, 1, 1, 0, 0, 0, 0
+            $info = $server_reply.Content | ConvertFrom-Json
+            $FeedDetails = $info.reply.contents
         
-        $FeedProps = [ordered]@{
-            Feed             = $FeedDetails.feed
-            ServerVersion    = $FeedDetails.server_version
-            WebServerVersion = $FeedDetails.web_server_version
-            Expiration       = $origin.AddSeconds($FeedDetails.expiration)
-            ExpirationTime   = $FeedDetails.expiration_time
-            MSP              = $FeedDetails.msp
+            $FeedProps = [ordered]@{
+                Feed             = $FeedDetails.feed
+                ServerVersion    = $FeedDetails.server_version
+                WebServerVersion = $FeedDetails.web_server_version
+                Expiration       = $origin.AddSeconds($FeedDetails.expiration)
+                ExpirationTime   = $FeedDetails.expiration_time
+                MSP              = $FeedDetails.msp
+                Host             = $PVSSession.host
+            }
+        
+            $PVSFeedObj = [pscustomobject]$FeedProps
+            $PVSFeedObj.pstypenames.insert(0,'PVS.FeedInfo')
+            $PVSFeedObj
         }
-        
-        $PVSFeedObj = [pscustomobject]$FeedProps
-        $PVSFeedObj.pstypenames.insert(0,'PVS.FeedInfo')
-        $PVSFeedObj
-     
     }
 }
 
@@ -416,13 +421,13 @@ function Show-PVSResult
     [CmdletBinding(DefaultParameterSetName = 'Index')]
     param(
 
-        # Nessus session index
+        # PVS session Id
         [Parameter(Mandatory=$true,
         ParameterSetName = "Index",
         Position=0)]
         [int32[]]$Id = @(),
 
-        # Nessus session object
+        # PVS session object
         [Parameter(Mandatory=$true,
         ParameterSetName = "Session",
         ValueFromPipeline=$true,
@@ -431,7 +436,8 @@ function Show-PVSResult
     )
     BEGIN 
     {
-        
+        $origin = New-Object -Type DateTime -ArgumentList 1970, 1, 1, 0, 0, 0, 0
+        $PVSSessions = New-Object System.Collections.ArrayList
     }
     PROCESS 
     {    
@@ -441,99 +447,270 @@ function Show-PVSResult
             {
                 if ($conn.id -in $Id)
                 {
-                    $PVSSession = $conn
+                    $PVSSessions.Add($conn)
                 }
             }
         }
         elseif ($Session -ne $null -and $Session.pstypenames[0] -eq "PVS.Session")
         {
-                $PVSSession = $Session
+                $PVSSessions.Add($Session)
         }
         else 
         {
             throw "PVS.Session was provided"
         }
-        
-        $Header = @{ 
-            'pvs-session'='true'
-            'token'=''
-            'pvs-tk'= "$($PVSSession.token)";
-            'pvs-name'="$($PVSSession.user.name)" 
-            'pvs-admin'="$($PVSSession.user.admin)"
-            'pvs-activated' = 'false'
-        }
-        
-        $Body =  @{'token' = $PVSSession.token; 
-            'seq'= 3336 
-            'json'=1
-        } 
-        
-        try
+        foreach($PVSSession in $PVSSessions)
         {
-            $server_reply = Invoke-WebRequest -Headers $Header -Body $Body -Uri ($PVSSession.Host + "/report/list") -Method Post
-        }
-        Catch [Net.WebException] 
-        {
-            Write-Verbose "Connection failed, re-authenticating."
-            # Set parameters for the connection
-            [System.Net.ServicePointManager]::MaxServicePoints = 0
-            $RauthHeader = @{'pvs-session'='false'}
-            $ReAuthBody   =  @{'login'=$PVSSession.Credentials.GetNetworkCredential().UserName; 
-                        'password'=$PVSSession.Credentials.GetNetworkCredential().Password; 
-                        'json'=1}
-            $ReAuthURI    = "$($PVSSession.Host)/login"
-
-            $server_reply = Invoke-WebRequest -Headers $RauthHeader -Uri $ReAuthURI -Body $ReAuthBody -Method Post -ErrorAction Stop
-            $reply = $server_reply.Content | ConvertFrom-Json
-            if ($reply.reply.status -eq "OK")
+            $Header = @{ 
+                'pvs-session'='true'
+                'token'=''
+                'pvs-tk'= "$($PVSSession.token)";
+                'pvs-name'="$($PVSSession.user.name)" 
+                'pvs-admin'="$($PVSSession.user.admin)"
+                'pvs-activated' = 'false'
+            }
+        
+            $Body =  @{'token' = $PVSSession.token; 
+                'seq'= 3336 
+                'json'=1
+            } 
+        
+            try
             {
-                Write-Verbose "Authentication successful."
-                $PVS_Session = $reply.reply.contents
-
-                Write-Verbose "Updating session"
-                Remove-PVSSession -Session $PVSSession | Out-Null
-                $PVSSession.Token = $PVS_Session.token
-                [void]$Global:PVSConn.Add($PVSSession)
-
-                $Header['pvs-tk'] = $PVS_Session.token
-                $Body['token']= $PVS_Session.token
-                $PVS_Session.token
                 $server_reply = Invoke-WebRequest -Headers $Header -Body $Body -Uri ($PVSSession.Host + "/report/list") -Method Post
+            }
+            Catch [Net.WebException] 
+            {
+                Write-Verbose "Connection failed, re-authenticating."
+                # Set parameters for the connection
+                [System.Net.ServicePointManager]::MaxServicePoints = 0
+                $RauthHeader = @{'pvs-session'='false'}
+                $ReAuthBody   =  @{'login'=$PVSSession.Credentials.GetNetworkCredential().UserName; 
+                            'password'=$PVSSession.Credentials.GetNetworkCredential().Password; 
+                            'json'=1}
+                $ReAuthURI    = "$($PVSSession.Host)/login"
+
+                $server_reply = Invoke-WebRequest -Headers $RauthHeader -Uri $ReAuthURI -Body $ReAuthBody -Method Post -ErrorAction Stop
+                $reply = $server_reply.Content | ConvertFrom-Json
+                if ($reply.reply.status -eq "OK")
+                {
+                    Write-Verbose "Authentication successful."
+                    $PVS_Session = $reply.reply.contents
+
+                    Write-Verbose "Updating session"
+                    Remove-PVSSession -Session $PVSSession | Out-Null
+                    $PVSSession.Token = $PVS_Session.token
+                    [void]$Global:PVSConn.Add($PVSSession)
+
+                    $Header['pvs-tk'] = $PVS_Session.token
+                    $Body['token']= $PVS_Session.token
+                    $PVS_Session.token
+                    $server_reply = Invoke-WebRequest -Headers $Header -Body $Body -Uri ($PVSSession.Host + "/report/list") -Method Post
                 
-            }
-            else
-            {
-                Write-Error "Could not authenticate to server. " -ErrorAction Stop
-            }
+                }
+                else
+                {
+                    Write-Error "Could not authenticate to server. " -ErrorAction Stop
+                }
                
+            }
+        
+
+            [void][System.Reflection.Assembly]::LoadWithPartialName("System.Web.Extensions")
+            $Serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+            $json = $server_reply.Content 
+            $Deserialized = $Serializer.DeserializeObject($json)
+            foreach ($report in $Deserialized.reply['contents'].reports.report)
+            {
+                if ($report.name -like "Pcap*")
+                {
+                    $report_type = "PCAP"
+                }
+                else
+                {
+                    $report_type = "Snapshot"
+                }
+                $reportprops = [ordered]@{
+                    Id         = $report.id
+                    Name       = $report.name
+                    Status     = $report.status
+                    LastUpdate = $report.last_updated_time
+                    SnapshotId = $report.snapshot_id
+                    Type       = $report_type
+                }
+                [pscustomobject]$reportprops
+
+            }
         }
+    }
+}
+
+
+<#
+.Synopsis
+   Short description
+.DESCRIPTION
+   Long description
+.EXAMPLE
+   Example of how to use this cmdlet
+.EXAMPLE
+   Another example of how to use this cmdlet
+#>
+function Get-PVSReportVulnerabilities
+{
+    [CmdletBinding(DefaultParameterSetName = 'Index')]
+    param(
+
+        # PVS session Id
+        [Parameter(Mandatory=$true,
+            ParameterSetName = "Index",
+            Position=0)]
+        [int32[]]$Id = @(),
+
+        # PVS session object
+        [Parameter(Mandatory=$true,
+            ParameterSetName = "Session",
+            ValueFromPipeline=$true,
+        Position=0)]
+        [pscustomobject]$Session,
+
+        [Parameter(Mandatory=$true,
+            ParameterSetName = "Index",
+            Position=1)]
+         [Parameter(Mandatory=$true,
+            ParameterSetName = "Session",
+            Position=1)]
+        [int32]$ReportId 
+
+
+    )
+    BEGIN 
+    {
         $origin = New-Object -Type DateTime -ArgumentList 1970, 1, 1, 0, 0, 0, 0
-
-        [void][System.Reflection.Assembly]::LoadWithPartialName("System.Web.Extensions")
-        $Serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
-        $json = $server_reply.Content 
-        $Deserialized = $Serializer.DeserializeObject($json)
-        foreach ($report in $Deserialized.reply['contents'].reports.report)
+        $PVSSessions = New-Object System.Collections.ArrayList
+    }
+    PROCESS 
+    {    
+        if ($Id.Count -gt 0)
         {
-            if ($report.name -like "Pcap*")
+            foreach($conn in $Global:PVSconn)
             {
-                $report_type = "PCAP"
+                if ($conn.id -in $Id)
+                {
+                    [void]$PVSSessions.Add($conn)
+                }
             }
-            else
-            {
-                $report_type = "Snapshot"
-            }
-            $reportprops = [ordered]@{
-                Id         = $report.id
-                Name       = $report.name
-                Status     = $report.status
-                LastUpdate = $report.last_updated_time
-                SnapshotId = $report.snapshot_id
-                Type       = $report_type
-            }
-            [pscustomobject]$reportprops
-
         }
-     
+        elseif ($Session -ne $null -and $Session.pstypenames[0] -eq "PVS.Session")
+        {
+                [void]$PVSSessions.Add($Session)
+        }
+        else 
+        {
+            throw "PVS.Session was provided"
+        }
+        foreach($PVSSession in $PVSSessions)
+        {
+            $Header = @{ 
+                'pvs-session'='true'
+                'token'=''
+                'pvs-tk'= "$($PVSSession.token)";
+                'pvs-name'="$($PVSSession.user.name)" 
+                'pvs-admin'="$($PVSSession.user.admin)"
+                'pvs-activated' = 'false'
+            }
+        
+            $Body =  @{'token' = $PVSSession.token; 
+                'report' = $ReportId
+                'seq'= 3336 
+                'json'=1
+            }
+
+            $URI = ($PVSSession.Host + "/report2/host/vulnerabilities")
+        
+            try
+            {
+                $server_reply = Invoke-WebRequest -Headers $Header -Body $Body -Uri $URI -Method Post
+            }
+            Catch [Net.WebException] 
+            {
+                Write-Verbose "Connection failed, re-authenticating."
+                # Set parameters for the connection
+                [System.Net.ServicePointManager]::MaxServicePoints = 0
+                $RauthHeader = @{'pvs-session'='false'}
+                $ReAuthBody   =  @{'login'=$PVSSession.Credentials.GetNetworkCredential().UserName; 
+                            'password'=$PVSSession.Credentials.GetNetworkCredential().Password; 
+                            'json'=1}
+                $ReAuthURI    = "$($PVSSession.Host)/login"
+
+                $server_reply = Invoke-WebRequest -Headers $RauthHeader -Uri $ReAuthURI -Body $ReAuthBody -Method Post -ErrorAction Stop
+                $reply = $server_reply.Content | ConvertFrom-Json
+                if ($reply.reply.status -eq "OK")
+                {
+                    Write-Verbose "Authentication successful."
+                    $PVS_Session = $reply.reply.contents
+
+                    Write-Verbose "Updating session"
+                    Remove-PVSSession -Session $PVSSession | Out-Null
+                    $PVSSession.Token = $PVS_Session.token
+                    [void]$Global:PVSConn.Add($PVSSession)
+
+                    $Header['pvs-tk'] = $PVS_Session.token
+                    $Body['token']= $PVS_Session.token
+                    $PVS_Session.token
+                    $server_reply = Invoke-WebRequest -Headers $Header -Body $Body -Uri $URI -Method Post
+                    
+                
+                }
+                else
+                {
+                    Write-Error "Could not authenticate to server. " -ErrorAction Stop
+                }
+               
+            }
+        
+            [void][System.Reflection.Assembly]::LoadWithPartialName("System.Web.Extensions")
+            $Serializer = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+            $json = $server_reply.Content 
+            $Deserialized = $Serializer.DeserializeObject($json)
+            $Vulnerabilities = $Deserialized.reply.contents.vulnlist.vulnerability
+            $PluginBody = $Body
+            $PluginBody.Add('plugin_id',0)
+            foreach($vuln in $Vulnerabilities)
+            {
+                $PluginBody['plugin_id'] = $vuln.plugin_id
+                $VDescription = Invoke-WebRequest -Headers $Header -Body $PluginBody -Uri ($PVSSession.host + "/report2/plugin/description") -Method Post
+                $DescObj = $Serializer.DeserializeObject($VDescription.content)
+                $PDescription = $DescObj.reply.contents.plugindescription
+                
+                # Properties for Vulnerability Object 
+                $VulnProps = [ordered]@{}
+
+                # Set the properties for the Object
+                $VulnProps['Count']          = $vuln.count
+                $VulnProps['Severity']       = $vuln.severity
+                $VulnProps['PluginId']       = $PDescription.pluginid
+                $VulnProps['PluginName']     = $PDescription.pluginname
+                $VulnProps['PluginFamily']   = $PDescription.pluginfamily
+                $VulnProps['Synopsis']       = $PDescription.pluginattributes.synopsis
+                $VulnProps['Description']    = $PDescription.pluginattributes.description
+                $VulnProps['Solution']       = $PDescription.pluginattributes.solution
+                $VulnProps['RiskInformation']= [pscustomobject][ordered]@{
+                                                    CVSSBaseScore      = $PDescription.pluginattributes.risk_information.cvss_base_score
+                                                    CVSSTemporalScore  = $PDescription.pluginattributes.risk_information.cvss_temporal_score
+                                                    CVSSTemporalVector = $PDescription.pluginattributes.risk_information.cvss_temporal_vector
+                                                    RiskFactor         = $PDescription.pluginattributes.risk_information.risk_factor
+                                                    STIGSeverity       = $PDescription.pluginattributes.risk_information.stig_severity
+                                                }
+                
+                [pscustomobject]$VulnProps
+
+               
+                #$PDescription.pluginfamily
+                #$PDescription.pluginid
+                #$PDescription.severity
+            }
+            
+        }
     }
 }
