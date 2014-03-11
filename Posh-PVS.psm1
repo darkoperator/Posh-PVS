@@ -20,23 +20,27 @@ function New-PVSSession
     (
         # PVS Server FQDN or IP.
         [Parameter(Mandatory=$true,
-        Position=0)]
+            Position=0)]
         [string[]]$ComputerName,
 
         # Credentials for connecting to the Nessus Server
         [Parameter(Mandatory=$true,
-        Position=1)]
+            Position=1)]
         [Management.Automation.PSCredential]$Credentials,
 
         # Port of the PVS server.
         [Parameter(Mandatory=$false,
-        Position=2)]
+            Position=2)]
         [Int32]$Port = 8835,
 
         # Check on the user cotext for the certificate CA
+        [Parameter(Mandatory=$false,
+            Position=2)]
         [switch]$UseUserContext,
 
         # Ignore SSL certificate validation errors
+        [Parameter(Mandatory=$false,
+            Position=2)]
         [switch]$IgnoreSSL
 
     )
@@ -81,6 +85,7 @@ function New-PVSSession
                 {
                     Write-Verbose "Was able to pull certificate information from host."
                     $Cert = [Security.Cryptography.X509Certificates.X509Certificate2]$WebRequest.ServicePoint.Certificate.Handle
+
                     try 
                     {
                         $SAN = ($Cert.Extensions | Where-Object {$_.Oid.Value -eq "2.5.29.17"}).Format(0) -split ", "
@@ -89,12 +94,14 @@ function New-PVSSession
                     {
                         $SAN = $null
                     }
+                    
                     $chain = New-Object Security.Cryptography.X509Certificates.X509Chain -ArgumentList (!$UseUserContext)
                     [void]$chain.ChainPolicy.ApplicationPolicy.Add("1.3.6.1.5.5.7.3.1")
                     $Status = $chain.Build($Cert)
                     [string[]]$ErrorInformation = $chain.ChainStatus | ForEach-Object {$_.Status}
                     $chain.Reset()
                     [Net.ServicePointManager]::ServerCertificateValidationCallback = $null
+                    
                     $certinfo = New-Object PKI.Web.WebSSL -Property @{
                         Certificate = $WebRequest.ServicePoint.Certificate;
                         Issuer = $WebRequest.ServicePoint.Certificate.Issuer;
@@ -105,7 +112,8 @@ function New-PVSSession
 
                     }
                     
-                } 
+                }
+
                 if (!$Status)
                 {
                     Write-Verbose "Certificate is not valid!"
@@ -138,7 +146,9 @@ function New-PVSSession
                 Write-Error "Could not connect to server $($URI)"
                 break
             }
+
             $Reply = ConvertFrom-Json -InputObject $Session.Content
+
             if ($reply.reply.status -eq "OK")
             {
                 $PVS_Session = $reply.reply.contents
@@ -193,15 +203,15 @@ function Remove-PVSSession
 
         # Nessus session index
         [Parameter(Mandatory=$true,
-        Position=0,
-        ParameterSetName = "Id")]
+            Position=0,
+            ParameterSetName = "Id")]
         [int32[]]$Id,
 
         # Nessus Session Object
         [Parameter(Mandatory=$true,
-        Position=0,
-        ParameterSetName = "Session",
-        ValueFromPipeline=$True)]
+            Position=0,
+            ParameterSetName = "Session",
+            ValueFromPipeline=$True)]
         [pscustomobject]$Session
     )
     BEGIN 
@@ -423,15 +433,15 @@ function Show-PVSResult
 
         # PVS session Id
         [Parameter(Mandatory=$true,
-        ParameterSetName = "Index",
-        Position=0)]
+            ParameterSetName = "Index",
+            Position=0)]
         [int32[]]$Id = @(),
 
         # PVS session object
         [Parameter(Mandatory=$true,
-        ParameterSetName = "Session",
-        ValueFromPipeline=$true,
-        Position=0)]
+            ParameterSetName = "Session",
+            ValueFromPipeline=$true,
+            Position=0)]
         [pscustomobject]$Session
     )
     BEGIN 
@@ -556,7 +566,7 @@ function Show-PVSResult
 .EXAMPLE
    Another example of how to use this cmdlet
 #>
-function Get-PVSReportVulnerabilities
+function Get-PVSReportVulnerabilitie
 {
     [CmdletBinding(DefaultParameterSetName = 'Index')]
     param(
@@ -571,7 +581,7 @@ function Get-PVSReportVulnerabilities
         [Parameter(Mandatory=$true,
             ParameterSetName = "Session",
             ValueFromPipeline=$true,
-        Position=0)]
+            Position=0)]
         [pscustomobject]$Session,
 
         [Parameter(Mandatory=$true,
@@ -581,8 +591,6 @@ function Get-PVSReportVulnerabilities
             ParameterSetName = "Session",
             Position=1)]
         [int32]$ReportId 
-
-
     )
     BEGIN 
     {
@@ -676,6 +684,7 @@ function Get-PVSReportVulnerabilities
             $Vulnerabilities = $Deserialized.reply.contents.vulnlist.vulnerability
             $PluginBody = $Body
             $PluginBody.Add('plugin_id',0)
+
             foreach($vuln in $Vulnerabilities)
             {
                 $PluginBody['plugin_id'] = $vuln.plugin_id
@@ -687,21 +696,21 @@ function Get-PVSReportVulnerabilities
                 $VulnProps = [ordered]@{}
 
                 # Set the properties for the Object
-                $VulnProps['Count']          = $vuln.count
-                $VulnProps['Severity']       = $vuln.severity
-                $VulnProps['PluginId']       = $PDescription.pluginid
-                $VulnProps['PluginName']     = $PDescription.pluginname
-                $VulnProps['PluginFamily']   = $PDescription.pluginfamily
-                $VulnProps['Synopsis']       = $PDescription.pluginattributes.synopsis
-                $VulnProps['Description']    = $PDescription.pluginattributes.description
-                $VulnProps['Solution']       = $PDescription.pluginattributes.solution
-                $VulnProps['RiskInformation']= [pscustomobject][ordered]@{
-                                                    CVSSBaseScore      = $PDescription.pluginattributes.risk_information.cvss_base_score
-                                                    CVSSTemporalScore  = $PDescription.pluginattributes.risk_information.cvss_temporal_score
-                                                    CVSSTemporalVector = $PDescription.pluginattributes.risk_information.cvss_temporal_vector
-                                                    RiskFactor         = $PDescription.pluginattributes.risk_information.risk_factor
-                                                    STIGSeverity       = $PDescription.pluginattributes.risk_information.stig_severity
-                                                }
+                $VulnProps['Count']           = $vuln.count
+                $VulnProps['Severity']        = $vuln.severity
+                $VulnProps['PluginId']        = $PDescription.pluginid
+                $VulnProps['PluginName']      = $PDescription.pluginname
+                $VulnProps['PluginFamily']    = $PDescription.pluginfamily
+                $VulnProps['Synopsis']        = $PDescription.pluginattributes.synopsis
+                $VulnProps['Description']     = $PDescription.pluginattributes.description
+                $VulnProps['Solution']        = $PDescription.pluginattributes.solution
+                $VulnProps['RiskInformation'] = [pscustomobject][ordered]@{
+                    CVSSBaseScore      = $PDescription.pluginattributes.risk_information.cvss_base_score
+                    CVSSTemporalScore  = $PDescription.pluginattributes.risk_information.cvss_temporal_score
+                    CVSSTemporalVector = $PDescription.pluginattributes.risk_information.cvss_temporal_vector
+                    RiskFactor         = $PDescription.pluginattributes.risk_information.risk_factor
+                    STIGSeverity       = $PDescription.pluginattributes.risk_information.stig_severity
+                }
                 
                 [pscustomobject]$VulnProps
 
